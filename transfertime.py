@@ -1,16 +1,20 @@
 # -*- coding: utf-8 -*-
-from django.conf import settings
 import datetime
 import pytz
 import re
 
+try:
+    from django.conf import settings
+    TIMEZONE = settings.TIME_ZONE
+except:
+    TIMEZONE = 'Asia/Shanghai'
 
 class TransferTime(object):
     """时间转换类"""
     def __init__(self, date):
         if isinstance(date, datetime.datetime):
             if date.tzinfo:
-                self.__date = date.astimezone(pytz.timezone(settings.TIME_ZONE)).strftime('%Y-%m-%d %H:%M:%S.%f')
+                self.__date = date.astimezone(pytz.timezone(TIMEZONE)).strftime('%Y-%m-%d %H:%M:%S.%f')
             else:
                 self.__date = date.strftime('%Y-%m-%d %H:%M:%S.%f')
         else:
