@@ -1,20 +1,32 @@
-# coding:utf-8
-
+# -*- coding: utf-8 -*-
+from django.conf import settings
 import datetime
 import pytz
 import re
-
-__author__ = 'martin'
 
 
 class TransferTime(object):
     """时间转换类"""
     def __init__(self, date):
         if isinstance(date, datetime.datetime):
-            self.__date = date.strftime('%Y-%m-%d %H:%M:%S.%f')
+            if date.tzinfo:
+                self.__date = date.astimezone(pytz.timezone(settings.TIME_ZONE)).strftime('%Y-%m-%d %H:%M:%S.%f')
+            else:
+                self.__date = date.strftime('%Y-%m-%d %H:%M:%S.%f')
         else:
             date = str(date) if isinstance(date, int) else date
             self.__date = date.replace('T', ' ').replace('Z', '')
+            try:
+                if len(date) == 13:
+                    self.__date = datetime.datetime.fromtimestamp(int(date)/1000).strftime('%Y-%m-%d %H:%M:%S.%f')
+            except:
+                pass
+            try:
+                if len(date) == 10:
+                    self.__date = datetime.datetime.fromtimestamp(int(date)).strftime('%Y-%m-%d %H:%M:%S.%f')
+            except:
+                pass
+
         # 初始格式
         self.__format = self.__get_format(self.__date)
         self.__new_format = self.__format
@@ -25,29 +37,32 @@ class TransferTime(object):
         self.__reduce = 0
         self.__add_minute = 0
         self.__reduce_minute = 0
-        self.__local_tz = pytz.timezone(pytz.country_timezones('cn')[0])
+        self.__local_tz = pytz.timezone(settings.TIME_ZONE)
         self.__new_tz = self.__local_tz
 
-    def set_zone(self, zone_name):
+    def set_zone(self, zone_name=settings.TIME_ZONE, zone_type='zone'):
         """设置时区"""
         # 时区转换
         try:
-            tz = pytz.timezone(pytz.country_timezones(zone_name)[0])
-        except:
-            tz = pytz.timezone(pytz.country_timezones('hk')[0])
+            if zone_type == 'zone':
+                tz = pytz.timezone(zone_name)
+            else:
+                tz = pytz.timezone(pytz.country_timezones(zone_name)[0])
+        except Exception:
+            tz = pytz.timezone(pytz.country_timezones('cn')[0])
             #raise TypeError('Zone: %s not found' % zone_name)
         self.__new_tz = tz
         return self
 
-    def set_market_zone(self, market_name):
+    def set_country(self, market_name):
         """获取区域"""
-        if market_name.upper() in ['SZ', 'SH']:
+        if market_name.upper() in ['SZ', 'SH', 'HK', 'TW']:
             zone = 'cn'
         elif market_name.upper() == 'US':
             zone = 'us'
         else:
-            zone = 'hk'
-        self.set_zone(zone)
+            zone = 'cn'
+        self.set_zone(zone_name=zone, zone_type='code')
         return self
 
     def __datetime(self, _format=None, _conv='datetime'):
@@ -58,8 +73,10 @@ class TransferTime(object):
         date = date - datetime.timedelta(days=self.__reduce)
         date = date + datetime.timedelta(minutes=self.__add_minute)
         date = date - datetime.timedelta(minutes=self.__reduce_minute)
-
-        date = self.__local_tz.localize(date).astimezone(self.__new_tz)
+        try:
+            date = self.__local_tz.localize(date).astimezone(self.__new_tz)
+        except OverflowError:
+            pass
         # datetime -> str
         if _conv == 'zone':
             return date
@@ -90,6 +107,10 @@ class TransferTime(object):
     def reduce_minute(self, minute: int):
         self.__reduce_minute += minute
         return self
+
+    @property
+    def tz(self):
+        return self.__new_tz
 
     @property
     def reset_date(self):
@@ -129,23 +150,29 @@ class TransferTime(object):
 
     @property
     def timestamp(self):
+        """unix 时间戳"""
         epoch = datetime.datetime(1970, 1, 1, tzinfo=pytz.utc)
         date = self.__datetime(_conv='zone').astimezone(pytz.utc)
         return datetime.timedelta.total_seconds(date - epoch)
+
+    @property
+    def nt_timestamp(self):
+        """windows 时间戳"""
+        return int(self.timestamp + 11644473600) * 10000000
 
     @property
     def reset_zone(self):
         self.__new_tz = self.__local_tz
         return self
 
-    def set_format(self, format):
+    def set_format(self, _format):
         """设置格式"""
         # test
         try:
-            datetime.datetime.strptime(self.__date, self.__format).strftime(format)
+            datetime.datetime.strptime(self.__date, self.__format).strftime(_format)
         except Exception:
-            raise TypeError('formt error: %s' % format)
-        self.__new_format = format
+            raise TypeError('formt error: %s' % _format)
+        self.__new_format = _format
         return self
 
     @property
@@ -159,6 +186,14 @@ class TransferTime(object):
         # str-> datetime
         _format = self.__new_format if self.__new_format != self.__format else None
         date = self.__datetime(_format=_format)
+        return date
+
+    @property
+    def date(self):
+        """返回date"""
+        self.set_format('%Y-%m-%d')
+        date = self.__datetime(_format='%Y-%m-%d')
+        self.reset_format
         return date
 
     @property
@@ -182,7 +217,7 @@ class TransferTime(object):
         date_format = None
         if date.find('-') >0 and len(date.split('-')) == 3:
             # '%Y-%m-%d %H:%M:%S'
-            if date.find(':') >0:
+            if date.find(':') > 0:
                 if len(date.split(':')) == 3:
                     if len(date.split(':')[-1].split('.')) == 2:
                         date_format = '%Y-%m-%d %H:%M:%S.%f'
@@ -193,7 +228,7 @@ class TransferTime(object):
             else:
                 date_format = '%Y-%m-%d'
         else:
-            r = re.compile('\d{1,}$')
+            r = re.compile('\d{1, }$')
             if r.match(date):
                 if len(date) == 8:
                     date_format = '%Y%m%d'
@@ -202,6 +237,3 @@ class TransferTime(object):
                 elif len(date) == 14:
                     date_format = '%Y%m%d%H%M%S'
         return date_format
-
-
-
