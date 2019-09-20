@@ -41,10 +41,10 @@ class TransferTime(object):
         self.__reduce = 0
         self.__add_minute = 0
         self.__reduce_minute = 0
-        self.__local_tz = pytz.timezone(settings.TIME_ZONE)
+        self.__local_tz = pytz.timezone(TIME_ZONE)
         self.__new_tz = self.__local_tz
 
-    def set_zone(self, zone_name=settings.TIME_ZONE, zone_type='zone'):
+    def set_zone(self, zone_name=TIME_ZONE, zone_type='zone'):
         """设置时区"""
         # 时区转换
         try:
